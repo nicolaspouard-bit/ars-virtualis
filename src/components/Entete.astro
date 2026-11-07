@@ -1,0 +1,53 @@
+---
+import { NAVIGATION, SITE } from '../config';
+
+const chemin = Astro.url.pathname;
+const estActif = (href: string) => chemin === href || chemin.startsWith(href);
+---
+
+<header class="entete">
+  <div class="cadre">
+    <a class="marque" href="/">
+      <span class="marque__titre">{SITE.titre}</span>
+      <span class="marque__sous-titre">{SITE.sousTitre}</span>
+    </a>
+    <nav class="navigation" aria-label="Navigation principale">
+      <ul>
+        {
+          NAVIGATION.map(({ href, libelle }) => (
+            <li>
+              <a href={href} aria-current={estActif(href) ? 'page' : undefined}>
+                {libelle}
+              </a>
+            </li>
+          ))
+        }
+      </ul>
+      <button class="bascule-theme" type="button" aria-label="Changer de thème">
+        <span data-libelle>Thème</span>
+      </button>
+    </nav>
+  </div>
+</header>
+
+<script>
+  const bouton = document.querySelector<HTMLButtonElement>('.bascule-theme');
+  const libelle = bouton?.querySelector('[data-libelle]');
+
+  function actualiser() {
+    const sombre = document.documentElement.dataset.theme === 'dark';
+    if (libelle) libelle.textContent = sombre ? 'Clair' : 'Sombre';
+    bouton?.setAttribute('aria-label', sombre ? 'Passer en thème clair' : 'Passer en thème sombre');
+  }
+
+  bouton?.addEventListener('click', () => {
+    const suivant = document.documentElement.dataset.theme === 'dark' ? 'light' : 'dark';
+    document.documentElement.dataset.theme = suivant;
+    try {
+      localStorage.setItem('theme', suivant);
+    } catch {}
+    actualiser();
+  });
+
+  actualiser();
+</script>

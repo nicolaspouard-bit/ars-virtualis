@@ -1,0 +1,8 @@
+node_modules/
+dist/
+.astro/
+.vercel/
+.env
+.DS_Store
+# Obsidian : on garde la config partagée, pas l'état de l'espace de travail
+**/.obsidian/workspace*.json

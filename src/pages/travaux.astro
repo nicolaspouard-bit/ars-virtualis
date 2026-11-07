@@ -1,0 +1,65 @@
+---
+import Base from '../layouts/Base.astro';
+import { SITE } from '../config';
+---
+
+<Base
+  titre="Travaux"
+  description="Qui écrit ici, les projets en cours, dont le Test de Travis, et comment me contacter."
+>
+  <!-- Premier jet : à relire et compléter (bio, publications, statut des projets). -->
+  <article class="article travaux">
+    <h1>Travaux</h1>
+    <p class="chapeau">
+      Un praticien qui pense, un philosophe qui teste : je dirige un studio de jeu vidéo et je
+      travaille sur ce que les modèles d’IA font, et ne font pas, du sens.
+    </p>
+
+    <div class="prose">
+      <h2>Qui écrit</h2>
+      <p>
+        Formé à la phénoménologie (Husserl, Heidegger, Patočka) et au réalisme contextuel de Jocelyn
+        Benoist, je dirige un studio de jeu vidéo, où je pilote notamment la stratégie IA. Ces deux
+        pratiques se nourrissent : la conception de jeux oblige à penser ce qui compte pour un joueur
+        dans une situation donnée, et c’est précisément ce que les modèles actuels peinent à saisir.
+      </p>
+
+      <h2>Le Test de Travis</h2>
+      <p>
+        Un protocole d’évaluation pour les world models, nommé d’après l’exemple des feuilles peintes
+        de Charles Travis : la même phrase, « les feuilles sont vertes », est vraie pour un
+        photographe et fausse pour une botaniste. Le test tient la scène physique constante et fait
+        varier uniquement l’occasion : la tâche, le rôle, l’enjeu, le destinataire.
+      </p>
+      <dl>
+        <dt>Question</dt>
+        <dd>Le modèle sait-il ce qui compte ici, et pas seulement ce qui va se passer ?</dd>
+        <dt>Méthode</dt>
+        <dd>
+          Des items à scène constante et occasions variables, sondés sur quatre niveaux : verdict,
+          saillance, action, intention.
+        </dd>
+        <dt>Mesures</dt>
+        <dd>
+          Deux indices croisés : sensibilité à l’occasion (OSI) et invariance quand l’occasion ne
+          devrait rien changer (OII).
+        </dd>
+        <dt>Statut</dt>
+        <dd>Protocole spécifié (version 0.1).</dd>
+      </dl>
+
+      <h2>Écrire, intervenir, collaborer</h2>
+      <p>
+        Je suis ouvert aux échanges avec des équipes de recherche et des entreprises qui travaillent
+        sur les world models et l’évaluation des modèles : collaboration, conseil, intervention.
+      </p>
+      {
+        SITE.email && (
+          <p>
+            Pour m’écrire : <a href={`mailto:${SITE.email}`}>{SITE.email}</a>
+          </p>
+        )
+      }
+    </div>
+  </article>
+</Base>

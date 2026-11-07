@@ -1,0 +1,63 @@
+---
+import Base from '../../layouts/Base.astro';
+import EssaiItem from '../../components/EssaiItem.astro';
+import { REGISTRES, essaisVisibles } from '../../lib/contenu';
+
+const essais = await essaisVisibles();
+const registresPresents = (Object.keys(REGISTRES) as (keyof typeof REGISTRES)[]).filter((r) =>
+  essais.some((e) => e.data.registre === r),
+);
+---
+
+<Base titre="Essais" description="Tous les essais, du plus récent au plus ancien.">
+  <div class="article">
+    <h1>Essais</h1>
+    <p class="chapeau">
+      Trois registres : la pièce-thèse pour l’argument complet, l’essai-pont pour une idée rendue
+      accessible, la note d’atelier pour un fragment ou un compte rendu d’expérience.
+    </p>
+
+    {
+      registresPresents.length > 1 && (
+        <fieldset class="filtres">
+          <legend>Afficher</legend>
+          <button type="button" data-filtre="tout" aria-pressed="true">
+            Tout
+          </button>
+          {registresPresents.map((r) => (
+            <button type="button" data-filtre={r} aria-pressed="false">
+              {REGISTRES[r]}
+            </button>
+          ))}
+        </fieldset>
+      )
+    }
+
+    {
+      essais.length > 0 ? (
+        <ul class="liste-essais">
+          {essais.map((essai) => (
+            <EssaiItem essai={essai} niveau={2} />
+          ))}
+        </ul>
+      ) : (
+        <p>Le premier essai arrive bientôt.</p>
+      )
+    }
+  </div>
+</Base>
+
+<script>
+  const boutons = document.querySelectorAll<HTMLButtonElement>('[data-filtre]');
+  const items = document.querySelectorAll<HTMLElement>('.essai-item');
+
+  boutons.forEach((bouton) => {
+    bouton.addEventListener('click', () => {
+      const filtre = bouton.dataset.filtre;
+      boutons.forEach((b) => b.setAttribute('aria-pressed', String(b === bouton)));
+      items.forEach((item) => {
+        item.hidden = filtre !== 'tout' && item.dataset.registre !== filtre;
+      });
+    });
+  });
+</script>

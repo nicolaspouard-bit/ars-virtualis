@@ -1,0 +1,33 @@
+---
+import { getEntry } from 'astro:content';
+import { REGISTRES, formatDate, romain, typo, type Essai } from '../lib/contenu';
+
+interface Props {
+  essai: Essai;
+  avecSerie?: boolean;
+  niveau?: 2 | 3;
+}
+
+const { essai, avecSerie = true, niveau = 3 } = Astro.props;
+const Titre = niveau === 2 ? 'h2' : 'h3';
+const { titre, resume, date, registre, partie, statut } = essai.data;
+const serie = avecSerie && essai.data.serie ? await getEntry(essai.data.serie) : undefined;
+---
+
+<li class="essai-item" data-registre={registre}>
+  <Titre class="essai-item__titre"><a href={`/essais/${essai.id}/`}>{typo(titre)}</a></Titre>
+  <p class="essai-item__resume">{typo(resume)}</p>
+  <ul class="meta">
+    <li class="registre">{REGISTRES[registre]}</li>
+    <li><time datetime={date.toISOString()}>{formatDate(date)}</time></li>
+    {
+      serie && (
+        <li>
+          {typo(serie.data.titre)}
+          {partie ? `, ${romain(partie)}` : ''}
+        </li>
+      )
+    }
+    {statut === 'brouillon' && <li class="brouillon">brouillon, visible en local uniquement</li>}
+  </ul>
+</li>

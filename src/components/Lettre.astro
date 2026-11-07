@@ -1,0 +1,23 @@
+---
+import { SITE } from '../config';
+
+interface Props {
+  intro?: string;
+}
+
+const {
+  intro = 'Une lettre quand un essai paraît, rarement plus d’une fois par mois.',
+} = Astro.props;
+---
+
+{
+  SITE.newsletter && (
+    <section class="lettre" aria-labelledby="titre-lettre">
+      <h2 id="titre-lettre" class="rubrique">La lettre</h2>
+      <p>{intro}</p>
+      <a class="bouton" href={SITE.newsletter} rel="noopener">
+        S’abonner à la lettre
+      </a>
+    </section>
+  )
+}

@@ -1,0 +1,15 @@
+---
+import { SITE } from '../config';
+const annee = new Date().getFullYear();
+---
+
+<footer class="pied">
+  <div class="cadre">
+    <p>{SITE.auteur}, {annee}. {SITE.sousTitre}.</p>
+    <ul>
+      <li><a href="/rss.xml">Flux RSS</a></li>
+      {SITE.newsletter && <li><a href="/newsletter/">Newsletter</a></li>}
+      <li><a href="/travaux/">Contact</a></li>
+    </ul>
+  </div>
+</footer>

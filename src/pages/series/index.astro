@@ -1,0 +1,38 @@
+---
+import Base from '../../layouts/Base.astro';
+import { essaisDeLaSerie, essaisVisibles, romain, seriesVisibles, typo } from '../../lib/contenu';
+
+const essais = await essaisVisibles();
+const series = await seriesVisibles(essais);
+---
+
+<Base titre="Séries" description="Les séries d’essais, chacune avec son sommaire.">
+  <div class="article">
+    <h1>Séries</h1>
+    <p class="chapeau">Des arguments trop longs pour un seul texte, publiés partie par partie.</p>
+
+    {series.length === 0 && <p>La première série est en préparation.</p>}
+
+    {
+      series.map((serie) => {
+        const parties = essaisDeLaSerie(essais, serie.id);
+        return (
+          <section class="serie-bloc">
+            <h2>
+              <a href={`/series/${serie.id}/`}>{typo(serie.data.titre)}</a>
+            </h2>
+            <p>{typo(serie.data.resume)}</p>
+            <ol class="sommaire-serie">
+              {parties.map((e, i) => (
+                <li>
+                  <span class="numero">{romain(e.data.partie ?? i + 1)}</span>
+                  <a href={`/essais/${e.id}/`}>{typo(e.data.titre)}</a>
+                </li>
+              ))}
+            </ol>
+          </section>
+        );
+      })
+    }
+  </div>
+</Base>

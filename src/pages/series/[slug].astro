@@ -1,0 +1,46 @@
+---
+import { render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import EssaiItem from '../../components/EssaiItem.astro';
+import Lettre from '../../components/Lettre.astro';
+import { essaisDeLaSerie, essaisVisibles, seriesVisibles, typo, type Essai, type Serie } from '../../lib/contenu';
+
+export async function getStaticPaths() {
+  const essais = await essaisVisibles();
+  const series = await seriesVisibles(essais);
+  return series.map((serie) => ({
+    params: { slug: serie.id },
+    props: { serie, parties: essaisDeLaSerie(essais, serie.id) },
+  }));
+}
+
+interface Props {
+  serie: Serie;
+  parties: Essai[];
+}
+
+const { serie, parties } = Astro.props;
+const { Content } = await render(serie);
+---
+
+<Base titre={typo(serie.data.titre)} description={serie.data.resume}>
+  <article class="article">
+    <p class="fil-serie"><a href="/series/">Séries</a></p>
+    <h1>{typo(serie.data.titre)}</h1>
+    <p class="chapeau">{typo(serie.data.resume)}</p>
+    <div class="prose">
+      <Content />
+    </div>
+
+    <section class="section" aria-labelledby="titre-parties">
+      <h2 id="titre-parties" class="rubrique">Les parties</h2>
+      <ol class="liste-essais">
+        {parties.map((essai) => <EssaiItem essai={essai} avecSerie={false} />)}
+      </ol>
+    </section>
+  </article>
+
+  <div class="suite">
+    <Lettre intro="Pour recevoir la suite de la série dès sa parution." />
+  </div>
+</Base>

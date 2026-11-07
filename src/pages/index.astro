@@ -1,0 +1,64 @@
+---
+import Base from '../layouts/Base.astro';
+import EssaiItem from '../components/EssaiItem.astro';
+import Lettre from '../components/Lettre.astro';
+import { SITE } from '../config';
+import { essaisVisibles } from '../lib/contenu';
+
+const essais = await essaisVisibles();
+const enAvant = essais.filter((e) => e.data.enAvant).slice(0, 3);
+const recents = essais.filter((e) => !enAvant.includes(e)).slice(0, 5);
+---
+
+<Base>
+  <section class="ouverture" aria-labelledby="titre-ouverture">
+    <h1 id="titre-ouverture">{SITE.baseline}</h1>
+    <!-- Manifeste : premier jet, à réécrire avec vos mots. -->
+    <div class="manifeste lettrine">
+      <p>
+        Les grands modèles prédisent ce qui va se passer ; ils ne savent pas ce qui compte ici. Ces
+        essais confrontent leurs prétentions, « comprendre » le langage, « modéliser » le monde, à une
+        philosophie du sens situé, héritée de la phénoménologie et du réalisme contextuel.
+      </p>
+      <p>
+        Ni prophétie ni dénigrement : des arguments, des distinctions, et des protocoles que chacun
+        peut refaire. <em>Ars virtualis</em>, en latin scolastique, c’est l’art de ce qui est en
+        puissance. Reste à savoir ce que nos machines ont en puissance, et ce qu’elles ne font que
+        simuler.
+      </p>
+    </div>
+  </section>
+
+  {
+    enAvant.length > 0 && (
+      <section class="section" aria-labelledby="titre-en-avant">
+        <h2 id="titre-en-avant" class="rubrique">À lire d’abord</h2>
+        <ul class="liste-essais">
+          {enAvant.map((essai) => (
+            <EssaiItem essai={essai} />
+          ))}
+        </ul>
+      </section>
+    )
+  }
+
+  {
+    recents.length > 0 && (
+      <section class="section" aria-labelledby="titre-recents">
+        <h2 id="titre-recents" class="rubrique">Derniers essais</h2>
+        <ul class="liste-essais">
+          {recents.map((essai) => (
+            <EssaiItem essai={essai} />
+          ))}
+        </ul>
+        <p>
+          <a href="/essais/">Tous les essais</a>
+        </p>
+      </section>
+    )
+  }
+
+  <div class="section">
+    <Lettre />
+  </div>
+</Base>

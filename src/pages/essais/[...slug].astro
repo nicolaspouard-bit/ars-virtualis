@@ -1,0 +1,130 @@
+---
+import { getEntry, render } from 'astro:content';
+import Base from '../../layouts/Base.astro';
+import EssaiItem from '../../components/EssaiItem.astro';
+import Lettre from '../../components/Lettre.astro';
+import {
+  REGISTRES,
+  essaisDeLaSerie,
+  essaisVisibles,
+  formatDate,
+  romain,
+  tempsDeLecture,
+  typo,
+  type Essai,
+} from '../../lib/contenu';
+
+export async function getStaticPaths() {
+  const essais = await essaisVisibles();
+  return essais.map((essai) => ({
+    params: { slug: essai.id },
+    props: { essai, tous: essais },
+  }));
+}
+
+interface Props {
+  essai: Essai;
+  tous: Essai[];
+}
+
+const { essai, tous } = Astro.props;
+const { titre, resume, date, registre, partie, statut, tags } = essai.data;
+const { Content, headings } = await render(essai);
+
+const serie = essai.data.serie ? await getEntry(essai.data.serie) : undefined;
+const parties = serie ? essaisDeLaSerie(tous, serie.id) : [];
+const rang = parties.findIndex((e) => e.id === essai.id);
+const precedent = rang > 0 ? parties[rang - 1] : undefined;
+const suivant = rang >= 0 && rang < parties.length - 1 ? parties[rang + 1] : undefined;
+
+const sommaire = headings.filter((h) => h.depth === 2 || h.depth === 3);
+const afficherSommaire = headings.filter((h) => h.depth === 2).length >= 3;
+
+const lies = tags.length
+  ? tous
+      .filter((e) => e.id !== essai.id && e.data.tags.some((t) => tags.includes(t)))
+      .filter((e) => !parties.includes(e))
+      .slice(0, 3)
+  : [];
+---
+
+<Base titre={typo(titre)} description={resume} type="article">
+  <article class="article">
+    {
+      serie && (
+        <p class="fil-serie">
+          Série <a href={`/series/${serie.id}/`}>{typo(serie.data.titre)}</a>
+          {partie && `, partie ${romain(partie)} sur ${romain(parties.length)}`}
+        </p>
+      )
+    }
+
+    <h1>{typo(titre)}</h1>
+    <p class="chapeau">{typo(resume)}</p>
+    <ul class="meta">
+      <li class="registre">{REGISTRES[registre]}</li>
+      <li><time datetime={date.toISOString()}>{formatDate(date)}</time></li>
+      <li>{tempsDeLecture(essai.body)} min de lecture</li>
+      {statut === 'brouillon' && <li class="brouillon">brouillon, visible en local uniquement</li>}
+    </ul>
+
+    {
+      afficherSommaire && (
+        <details class="sommaire">
+          <summary>Sommaire</summary>
+          <ol>
+            {sommaire.map((h) => (
+              <li class={`niveau-${h.depth}`}>
+                <a href={`#${h.slug}`}>{h.text}</a>
+              </li>
+            ))}
+          </ol>
+        </details>
+      )
+    }
+
+    <div class:list={['prose', `prose--${registre}`]}>
+      <Content />
+    </div>
+  </article>
+
+  <div class="suite">
+    {
+      (precedent || suivant) && (
+        <nav class="suite-serie" aria-label="Dans la même série">
+          {precedent && (
+            <a class="precedent" href={`/essais/${precedent.id}/`}>
+              <span>Partie précédente</span>
+              {typo(precedent.data.titre)}
+            </a>
+          )}
+          {suivant && (
+            <a class="suivant" href={`/essais/${suivant.id}/`}>
+              <span>Partie suivante</span>
+              {typo(suivant.data.titre)}
+            </a>
+          )}
+        </nav>
+      )
+    }
+
+    <Lettre />
+
+    {
+      lies.length > 0 && (
+        <section aria-labelledby="titre-lies">
+          <h2 id="titre-lies" class="rubrique">Dans le même esprit</h2>
+          <ul class="liste-essais">
+            {lies.map((e) => (
+              <EssaiItem essai={e} />
+            ))}
+          </ul>
+        </section>
+      )
+    }
+  </div>
+</Base>
+
+<script>
+  import '../../scripts/notes-marge';
+</script>

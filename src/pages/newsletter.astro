@@ -1,0 +1,16 @@
+---
+import Base from '../layouts/Base.astro';
+import Lettre from '../components/Lettre.astro';
+import { SITE } from '../config';
+---
+
+<Base titre="La lettre" description="Recevoir les nouveaux essais par courriel.">
+  <div class="article">
+    <h1>La lettre</h1>
+    <p class="chapeau">
+      Chaque nouvel essai, avec quelques lignes sur ce qui l’a motivé. Pas plus d’une lettre par mois,
+      en général.
+    </p>
+    {SITE.newsletter ? <Lettre intro="L’inscription se fait sur la plateforme d’envoi." /> : <p>La lettre est en préparation. En attendant, le <a href="/rss.xml">flux RSS</a> signale chaque parution.</p>}
+  </div>
+</Base>
