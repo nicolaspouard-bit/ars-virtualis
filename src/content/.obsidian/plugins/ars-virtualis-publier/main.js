@@ -2,14 +2,25 @@
  * Ars Virtualis : publier
  * Extension Obsidian (ordinateur uniquement) écrite pour ce site.
  *
+ * Deux façons de l'utiliser :
+ *
+ *  - Mode « coffre du site » (réglage « Dossier du projet » vide) : le coffre EST
+ *    le dossier src/content du site. Les essais sont dans essais/.
+ *
+ *  - Mode « copie vers le site » (réglage « Dossier du projet » rempli) : le coffre
+ *    est un coffre ordinaire (Second Cerveau…). Les essais sont rangés dans un dossier
+ *    du coffre ; à la publication, la note est copiée dans le projet du site,
+ *    avec ses images, et les liens Obsidian sont convertis.
+ *
  * Commande « Publier l'essai ouvert » :
  *   1. vérifie les propriétés de l'essai (mêmes règles que src/content.config.ts) ;
  *   2. demande confirmation ;
  *   3. passe « statut » à « publie » (et, au choix, « date » à aujourd'hui) ;
- *   4. git add + commit + push des fichiers du coffre. Vercel republie le site.
+ *   4. (mode copie) copie la note et ses images dans le projet ;
+ *   5. git add + commit + push du dossier src/content. Vercel republie le site.
  *
- * Commande « Envoyer les corrections » : commit + push de toutes les
- * modifications du coffre, sans toucher aux propriétés.
+ * Commande « Envoyer les corrections » : envoie toutes les retouches, sans toucher
+ * aux propriétés (en mode copie, recopie d'abord les essais du dossier).
  *
  * Fichier JavaScript simple, sans étape de compilation : on peut le modifier directement.
  */
@@ -17,15 +28,20 @@
 const { Plugin, Modal, Notice, PluginSettingTab, Setting, FileSystemAdapter, TFile } = require('obsidian');
 const { execFile } = require('child_process');
 const path = require('path');
+const fs = require('fs');
 
 const DEFAUTS = {
   site: 'https://ars-virtualis.vercel.app',
   dateDuJour: true,
+  projet: '', // vide = le coffre est src/content ; sinon chemin du projet du site
+  dossierSource: 'Ars Virtualis', // mode copie : dossier des essais dans le coffre
 };
 
 const REGISTRES = ['these', 'pont', 'atelier'];
 const DOSSIER_ESSAIS = 'essais';
 const DOSSIER_SERIES = 'series';
+const DOSSIER_IMAGES = 'images'; // dans essais/
+const EXT_IMAGES = ['png', 'jpg', 'jpeg', 'gif', 'webp', 'svg', 'avif'];
 
 /* ---------- Outils ---------- */
 
@@ -51,6 +67,11 @@ function adresseEssai(site, cheminFichier) {
   const relatif = cheminFichier.slice(DOSSIER_ESSAIS.length + 1).replace(/\.md$/, '');
   const slug = relatif.split('/').map(slugifier).join('/');
   return `${site.replace(/\/+$/, '')}/essais/${slug}/`;
+}
+
+/** Nom du fichier dans essais/ en mode copie : « Les feuilles peintes » → les-feuilles-peintes.md */
+function nomPublie(basename) {
+  return `${slugifier(basename) || 'essai'}.md`;
 }
 
 /**
@@ -110,9 +131,43 @@ function verifierEssai(fm, { series, nomFichier, dateRemplacee }) {
   return { erreurs, avertissements };
 }
 
+/**
+ * Mode copie : transforme le texte d'une note Obsidian en texte lisible par le site.
+ *  - images intégrées (![[x.png]] ou ![](x.png)) → ![](images/x.png), fichier à copier ;
+ *  - liens vers un autre essai du dossier → lien vers sa page ;
+ *  - autres liens internes → simple texte ;
+ *  - commentaires %% … %% → retirés (ils sont privés dans Obsidian).
+ *
+ * liens : [{ original, estIntegre, texte, cible }] où cible vaut
+ *   { type: 'image', chemin, nom } | { type: 'essai', slug } | null (introuvable / non publiable).
+ */
+function convertirNote(contenu, liens) {
+  const images = new Map(); // nom → chemin dans le coffre
+  const convertis = [];
+  let texte = contenu.replace(/%%[\s\S]*?%%/g, '');
+
+  for (const l of liens) {
+    let remplacement;
+    if (l.cible?.type === 'image') {
+      images.set(l.cible.nom, l.cible.chemin);
+      remplacement = `![${l.texte}](${DOSSIER_IMAGES}/${l.cible.nom})`;
+    } else if (l.cible?.type === 'essai' && !l.estIntegre) {
+      remplacement = `[${l.texte}](/essais/${l.cible.slug}/)`;
+    } else {
+      remplacement = l.texte;
+      convertis.push(`${l.original} → « ${l.texte} » (texte simple)`);
+    }
+    texte = texte.split(l.original).join(remplacement);
+  }
+  return { texte, images, convertis };
+}
+
 /** Traduit les erreurs Git courantes en consignes compréhensibles. */
 function expliquerErreurGit(sortie) {
   const s = sortie.toLowerCase();
+  if (s.includes('projet introuvable')) {
+    return "Le dossier du projet du site est introuvable. Vérifie le réglage « Dossier du projet » de l'extension.";
+  }
   if (s.includes('could not read username') || s.includes('authentication failed') || s.includes('terminal prompts disabled') || s.includes('403')) {
     return "GitHub refuse l'accès : le jeton a probablement expiré. Crée un nouveau jeton sur GitHub, puis lance « git push » dans le Terminal pour l'enregistrer. Le commit est fait en local, il partira au prochain envoi.";
   }
@@ -123,7 +178,7 @@ function expliquerErreurGit(sortie) {
     return 'GitHub est injoignable : vérifie la connexion internet. Le commit est fait en local, il partira au prochain envoi.';
   }
   if (s.includes('not a git repository')) {
-    return "Ce coffre n'est pas dans un dépôt Git. Ouvre bien le dossier ars-virtualis/src/content comme coffre.";
+    return "Ce dossier n'est pas dans un dépôt Git. Ouvre bien ars-virtualis/src/content comme coffre, ou renseigne le réglage « Dossier du projet ».";
   }
   if (s.includes('enoent')) {
     return 'Git est introuvable sur cet ordinateur.';
@@ -163,7 +218,7 @@ function git(args, cwd) {
 
 class ModaleConfirmation extends Modal {
   /**
-   * options : { titre, intro, listes: [{ titre, elements, classe }], fichiers, case, champ, bouton, auConfirmer }
+   * options : { titre, intro, listes: [{ titre, elements, classe }], case, champ, bouton, auConfirmer }
    */
   constructor(app, options) {
     super(app);
@@ -244,29 +299,56 @@ module.exports = class ArsVirtualisPublier extends Plugin {
     this.addRibbonIcon('send', "Ars Virtualis : publier l'essai ouvert", () => {
       const fichier = this.essaiOuvert();
       if (fichier) this.publier(fichier);
-      else new Notice(`Ouvre d'abord un essai du dossier « ${DOSSIER_ESSAIS} ».`);
+      else new Notice(`Ouvre d'abord un essai du dossier « ${this.dossierEssais()} ».`);
     });
 
     this.addSettingTab(new OngletReglages(this.app, this));
   }
 
-  essaiOuvert() {
-    const f = this.app.workspace.getActiveFile();
-    return f instanceof TFile && f.extension === 'md' && f.path.startsWith(`${DOSSIER_ESSAIS}/`) ? f : null;
+  /* --- Où sont les choses --- */
+
+  modeCopie() {
+    return !vide(this.reglages.projet);
   }
 
-  dossierCoffre() {
+  /** Dossier des essais dans le coffre. */
+  dossierEssais() {
+    return this.modeCopie() ? this.reglages.dossierSource.replace(/^\/+|\/+$/g, '') : DOSSIER_ESSAIS;
+  }
+
+  /** Dossier src/content du site sur le disque. */
+  dossierContenu() {
+    if (this.modeCopie()) return path.join(this.reglages.projet.replace(/^~(?=\/|$)/, require('os').homedir()), 'src', 'content');
     const adaptateur = this.app.vault.adapter;
     return adaptateur instanceof FileSystemAdapter ? adaptateur.getBasePath() : null;
   }
 
-  /** Racine du dépôt et chemin du coffre relatif à cette racine. */
+  estEssai(f) {
+    return (
+      f instanceof TFile &&
+      f.extension === 'md' &&
+      f.path.startsWith(`${this.dossierEssais()}/`) &&
+      !(this.modeCopie() && f.basename.startsWith('_'))
+    );
+  }
+
+  essaiOuvert() {
+    const f = this.app.workspace.getActiveFile();
+    return this.estEssai(f) ? f : null;
+  }
+
+  /** Chemin de l'essai tel qu'il sera dans src/content (essais/xxx.md). */
+  cheminPublie(fichier) {
+    return this.modeCopie() ? `${DOSSIER_ESSAIS}/${nomPublie(fichier.basename)}` : fichier.path;
+  }
+
+  /** Racine du dépôt et chemin de src/content relatif à cette racine. */
   async depot() {
-    const coffre = this.dossierCoffre();
-    if (!coffre) throw Object.assign(new Error('coffre'), { sortie: 'not a git repository' });
-    const { stdout } = await git(['rev-parse', '--show-toplevel'], coffre);
+    const contenu = this.dossierContenu();
+    if (!contenu || !fs.existsSync(contenu)) throw Object.assign(new Error('projet'), { sortie: 'projet introuvable' });
+    const { stdout } = await git(['rev-parse', '--show-toplevel'], contenu);
     const racine = stdout.trim();
-    return { racine, relatif: path.relative(racine, coffre) || '.' };
+    return { racine, relatif: path.relative(racine, contenu) || '.' };
   }
 
   async fichiersModifies({ racine, relatif }) {
@@ -283,22 +365,94 @@ module.exports = class ArsVirtualisPublier extends Plugin {
   }
 
   seriesConnues() {
+    if (this.modeCopie()) {
+      try {
+        return fs
+          .readdirSync(path.join(this.dossierContenu(), DOSSIER_SERIES))
+          .filter((n) => n.endsWith('.md') && !n.startsWith('_'))
+          .map((n) => n.replace(/\.md$/, ''));
+      } catch {
+        return [];
+      }
+    }
     return this.app.vault
       .getMarkdownFiles()
       .filter((f) => f.path.startsWith(`${DOSSIER_SERIES}/`))
       .map((f) => f.basename);
   }
 
+  /* --- Mode copie : préparation de la version du site --- */
+
+  /** Liste les liens et images de la note, résolus comme Obsidian le fait. */
+  liensDe(fichier) {
+    const cache = this.app.metadataCache.getFileCache(fichier) ?? {};
+    const tous = [...(cache.embeds ?? []).map((e) => ({ ...e, estIntegre: true })), ...(cache.links ?? []).map((e) => ({ ...e, estIntegre: false }))];
+    const vus = new Set();
+    const liens = [];
+    for (const l of tous) {
+      if (vus.has(l.original)) continue;
+      vus.add(l.original);
+      let chemin = String(l.link).split('#')[0];
+      try {
+        chemin = decodeURI(chemin);
+      } catch {}
+      const dest = chemin ? this.app.metadataCache.getFirstLinkpathDest(chemin, fichier.path) : null;
+      let texte = l.displayText && l.displayText !== l.link ? l.displayText : '';
+      if (l.estIntegre && /^\d+(x\d+)?$/.test(texte)) texte = ''; // ![[x.png|300]] : taille, pas texte
+      let cible = null;
+      if (dest && EXT_IMAGES.includes(dest.extension.toLowerCase())) {
+        cible = { type: 'image', chemin: dest.path, nom: `${slugifier(dest.basename) || 'image'}.${dest.extension.toLowerCase()}` };
+      } else if (dest && this.estEssai(dest)) {
+        cible = { type: 'essai', slug: nomPublie(dest.basename).replace(/\.md$/, '') };
+        texte = texte || dest.basename;
+      } else {
+        texte = texte || (dest ? dest.basename : chemin.split('/').pop().replace(/\.md$/, ''));
+      }
+      liens.push({ original: l.original, estIntegre: l.estIntegre, texte, cible });
+    }
+    return liens;
+  }
+
+  /** Prépare la version du site : texte converti, images à copier, liens convertis. */
+  async preparerCopie(fichier) {
+    const contenu = await this.app.vault.read(fichier);
+    const { texte, images, convertis } = convertirNote(contenu, this.liensDe(fichier));
+    const destination = path.join(this.dossierContenu(), this.cheminPublie(fichier));
+    let actuel = null;
+    try {
+      actuel = fs.readFileSync(destination, 'utf8');
+    } catch {}
+    return { fichier, texte, images, convertis, destination, existe: actuel !== null, change: actuel !== texte };
+  }
+
+  /** Écrit la version du site (note + images) dans le projet. */
+  async ecrireCopie({ texte, images, destination }) {
+    const dossierImages = path.join(this.dossierContenu(), DOSSIER_ESSAIS, DOSSIER_IMAGES);
+    for (const [nom, chemin] of images) {
+      const source = this.app.vault.getAbstractFileByPath(chemin);
+      if (!(source instanceof TFile)) continue;
+      fs.mkdirSync(dossierImages, { recursive: true });
+      fs.writeFileSync(path.join(dossierImages, nom), Buffer.from(await this.app.vault.readBinary(source)));
+    }
+    fs.mkdirSync(path.dirname(destination), { recursive: true });
+    fs.writeFileSync(destination, texte, 'utf8');
+  }
+
+  /* --- Commandes --- */
+
   async publier(fichier) {
     if (this.enCours) return new Notice('Un envoi est déjà en cours.');
 
+    const copie = this.modeCopie();
     const fm = this.app.metadataCache.getFileCache(fichier)?.frontmatter ?? {};
     const dejaPublie = fm.statut === 'publie';
     const proposerDate = this.reglages.dateDuJour && !dejaPublie;
+    const chemin = this.cheminPublie(fichier);
+    const nomFichier = path.basename(chemin);
 
     const { erreurs, avertissements } = verifierEssai(fm, {
       series: this.seriesConnues(),
-      nomFichier: fichier.name,
+      nomFichier,
       dateRemplacee: proposerDate,
     });
 
@@ -316,22 +470,31 @@ module.exports = class ArsVirtualisPublier extends Plugin {
 
     let depot;
     let autres = [];
+    let apercu = null;
     try {
       depot = await this.depot();
-      autres = (await this.fichiersModifies(depot)).filter((l) => !l.startsWith(`${fichier.path} `));
+      autres = (await this.fichiersModifies(depot)).filter((l) => !l.startsWith(`${chemin} `));
+      if (copie) apercu = await this.preparerCopie(fichier);
     } catch (e) {
       return new Notice(`Publication impossible : ${expliquerErreurGit(e.sortie ?? String(e))}`, 0);
     }
 
+    const notes = [...avertissements];
+    if (copie) {
+      notes.push(`Copié dans le site sous ${chemin}${apercu.images.size ? `, avec ${apercu.images.size} image(s)` : ''}.`);
+      if (apercu.existe && !dejaPublie) notes.push('Un essai du même nom existe déjà sur le site : il sera remplacé.');
+    }
+
     const titre = String(fm.titre).trim();
-    const adresse = adresseEssai(this.reglages.site, fichier.path);
+    const adresse = adresseEssai(this.reglages.site, chemin);
 
     new ModaleConfirmation(this.app, {
       titre: dejaPublie ? 'Mettre à jour cet essai en ligne ?' : 'Publier cet essai ?',
       intro: `« ${titre} » sera ${dejaPublie ? 'mis à jour' : 'publié'} à l'adresse ${adresse}, environ une minute après l'envoi.`,
       listes: [
-        { titre: 'À noter', elements: avertissements },
-        { titre: 'Autres fichiers modifiés, envoyés aussi', elements: autres },
+        { titre: 'À noter', elements: notes },
+        { titre: 'Liens Obsidian sans équivalent sur le site', elements: apercu?.convertis ?? [] },
+        { titre: 'Autres fichiers modifiés du site, envoyés aussi', elements: autres },
       ],
       case: proposerDate ? { libelle: `Mettre la date d'aujourd'hui (${aujourdhui()})`, valeur: true } : undefined,
       bouton: dejaPublie ? 'Mettre à jour' : 'Publier',
@@ -347,8 +510,15 @@ module.exports = class ArsVirtualisPublier extends Plugin {
         if (proposerDate && !coche) {
           // La date n'a pas été vérifiée plus haut : on le fait maintenant.
           const relu = this.app.metadataCache.getFileCache(fichier)?.frontmatter ?? fm;
-          const { erreurs: e2 } = verifierEssai(relu, { series: this.seriesConnues(), nomFichier: fichier.name, dateRemplacee: false });
+          const { erreurs: e2 } = verifierEssai(relu, { series: this.seriesConnues(), nomFichier, dateRemplacee: false });
           if (e2.length) return new Notice(`Publication annulée : ${e2.join(' ')}`, 0);
+        }
+        if (copie) {
+          try {
+            await this.ecrireCopie(await this.preparerCopie(fichier));
+          } catch (e) {
+            return new Notice(`Impossible de copier l'essai dans le projet : ${e.message}`, 0);
+          }
         }
         await this.envoyer(depot, `${dejaPublie ? 'Mise à jour' : 'Publication'} : ${titre}`, adresse);
       },
@@ -359,25 +529,66 @@ module.exports = class ArsVirtualisPublier extends Plugin {
     if (this.enCours) return new Notice('Un envoi est déjà en cours.');
     let depot;
     let fichiers;
+    const copies = [];
+    const ignores = [];
+    const convertis = [];
     try {
       depot = await this.depot();
+      if (this.modeCopie()) {
+        // Recopie les essais du dossier dont les propriétés sont valides.
+        const series = this.seriesConnues();
+        const notes = this.app.vault.getMarkdownFiles().filter((f) => this.estEssai(f));
+        for (const f of notes) {
+          const fm = this.app.metadataCache.getFileCache(f)?.frontmatter ?? {};
+          const { erreurs } = verifierEssai(fm, { series, nomFichier: nomPublie(f.basename), dateRemplacee: false });
+          if (erreurs.length) {
+            ignores.push(`${f.basename} : ${erreurs[0]}`);
+            continue;
+          }
+          const apercu = await this.preparerCopie(f);
+          if (apercu.change || apercu.images.size) copies.push(apercu);
+          if (apercu.change) convertis.push(...apercu.convertis.map((c) => `${f.basename} : ${c}`));
+        }
+      }
       fichiers = await this.fichiersModifies(depot);
     } catch (e) {
       return new Notice(`Envoi impossible : ${expliquerErreurGit(e.sortie ?? String(e))}`, 0);
     }
 
-    if (!fichiers.length) {
+    const aCopier = copies.filter((c) => c.change).map((c) => `${c.fichier.basename} → ${this.cheminPublie(c.fichier)}`);
+
+    if (!fichiers.length && !aCopier.length) {
+      if (ignores.length) {
+        new ModaleConfirmation(this.app, {
+          titre: 'Rien à envoyer',
+          intro: 'Aucun essai valide n’a changé. Ces notes ne sont pas envoyées car leurs propriétés sont incomplètes :',
+          listes: [{ titre: 'Non envoyées', elements: ignores }],
+        }).open();
+        return;
+      }
       // Rien de neuf, mais un envoi précédent a pu échouer : on retente le push.
       return this.envoyer(depot, null, this.reglages.site);
     }
 
     new ModaleConfirmation(this.app, {
       titre: 'Envoyer les corrections ?',
-      intro: 'Ces fichiers partiront sur GitHub, puis le site sera regénéré. Les brouillons restent invisibles en ligne.',
-      listes: [{ titre: 'Fichiers modifiés', elements: fichiers }],
+      intro: 'Ces changements partiront sur GitHub, puis le site sera regénéré. Les brouillons restent invisibles en ligne.',
+      listes: [
+        { titre: 'Essais recopiés dans le site', elements: aCopier },
+        { titre: 'Fichiers modifiés du site', elements: fichiers },
+        { titre: 'Liens Obsidian sans équivalent sur le site', elements: convertis },
+        { titre: 'Non envoyées (propriétés incomplètes)', elements: ignores },
+      ],
       champ: { libelle: 'Description', valeur: 'Corrections' },
       bouton: 'Envoyer',
-      auConfirmer: ({ texte }) => this.envoyer(depot, texte.trim() || 'Corrections', this.reglages.site),
+      auConfirmer: async ({ texte }) => {
+        try {
+          for (const c of copies) await this.ecrireCopie(c);
+        } catch (e) {
+          return new Notice(`Impossible de copier les essais dans le projet : ${e.message}`, 0);
+        }
+        await this.envoyer(depot, texte.trim() || 'Corrections', this.reglages.site);
+      },
     }).open();
   }
 
@@ -426,14 +637,40 @@ class OngletReglages extends PluginSettingTab {
   display() {
     const { containerEl } = this;
     containerEl.empty();
+    const r = this.extension.reglages;
+    const sauver = async () => {
+      await this.extension.sauver();
+    };
+
+    new Setting(containerEl)
+      .setName('Dossier du projet du site')
+      .setDesc(
+        'Laisser vide si ce coffre est le dossier src/content du site. Sinon, chemin du projet sur cet ordinateur (ex. ~/Claude/Projects/ArsVirtualis) : les essais seront copiés dedans à la publication.',
+      )
+      .addText((t) =>
+        t.setPlaceholder('~/Claude/Projects/ArsVirtualis').setValue(r.projet).onChange(async (v) => {
+          r.projet = v.trim();
+          await sauver();
+        }),
+      );
+
+    new Setting(containerEl)
+      .setName('Dossier des essais dans ce coffre')
+      .setDesc('Utilisé seulement si le dossier du projet est renseigné. Les notes dont le nom commence par « _ » sont ignorées.')
+      .addText((t) =>
+        t.setValue(r.dossierSource).onChange(async (v) => {
+          r.dossierSource = v.trim() || DEFAUTS.dossierSource;
+          await sauver();
+        }),
+      );
 
     new Setting(containerEl)
       .setName('Adresse du site')
       .setDesc('Sert à afficher le lien de l’essai publié. À changer si vous prenez un nom de domaine.')
       .addText((t) =>
-        t.setValue(this.extension.reglages.site).onChange(async (v) => {
-          this.extension.reglages.site = v.trim() || DEFAUTS.site;
-          await this.extension.sauver();
+        t.setValue(r.site).onChange(async (v) => {
+          r.site = v.trim() || DEFAUTS.site;
+          await sauver();
         }),
       );
 
@@ -441,13 +678,13 @@ class OngletReglages extends PluginSettingTab {
       .setName('Proposer la date du jour')
       .setDesc('À la première publication, propose de remplacer « date » par la date du jour.')
       .addToggle((t) =>
-        t.setValue(this.extension.reglages.dateDuJour).onChange(async (v) => {
-          this.extension.reglages.dateDuJour = v;
-          await this.extension.sauver();
+        t.setValue(r.dateDuJour).onChange(async (v) => {
+          r.dateDuJour = v;
+          await sauver();
         }),
       );
   }
 }
 
 // Exposé pour les tests hors Obsidian.
-module.exports.outils = { verifierEssai, adresseEssai, slugifier, expliquerErreurGit, git };
+module.exports.outils = { verifierEssai, adresseEssai, slugifier, nomPublie, convertirNote, expliquerErreurGit, git };
