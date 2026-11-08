@@ -1,12 +1,15 @@
 ---
 titre: Les feuilles peintes
-date: 2026-11-07
+date: 2026-11-08
 resume: Un exemple de Charles Travis, et pourquoi il suffit à montrer ce qui manque aux world models.
 registre: pont
-statut: brouillon
+statut: publie
 serie: le-sens-nest-pas-dans-la-tete
 partie: 1
-tags: [Test de Travis, world models, réalisme contextuel]
+tags:
+  - Test de Travis
+  - world models
+  - réalisme contextuel
 ---
 
 *Brouillon de démonstration : il montre tous les éléments de mise en page disponibles. Remplacez ce texte, ou supprimez le fichier.*

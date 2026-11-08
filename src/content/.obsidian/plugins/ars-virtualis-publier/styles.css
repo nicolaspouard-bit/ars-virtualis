@@ -1,0 +1,12 @@
+.av-publier ul {
+  margin-top: 0.25em;
+  padding-left: 1.25em;
+}
+
+.av-publier li {
+  margin-block: 0.2em;
+}
+
+.av-publier .av-erreurs li {
+  color: var(--text-error);
+}

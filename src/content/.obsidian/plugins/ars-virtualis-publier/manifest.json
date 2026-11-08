@@ -1,0 +1,9 @@
+{
+  "id": "ars-virtualis-publier",
+  "name": "Ars Virtualis : publier",
+  "version": "1.0.0",
+  "minAppVersion": "1.4.0",
+  "description": "Publie l'essai ouvert sur le site Ars Virtualis : vérifie les propriétés, passe le statut à « publie », puis commit et push vers GitHub (Vercel republie le site).",
+  "author": "Nicolas Pouard",
+  "isDesktopOnly": true
+}
